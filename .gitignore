@@ -37,3 +37,6 @@ dist-ssr
 /anchor/target/.rustc_info.json
 test-ledger
 **/*.rs.bk
+
+/anchor/src/client/js/*.ts
+
