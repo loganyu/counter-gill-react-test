@@ -1,0 +1,1 @@
+/Users/loganyu/Projects/gill-working-group/tobeycodes/counter/anchor/target/sbpf-solana-solana/release/counter.so: /Users/loganyu/Projects/gill-working-group/tobeycodes/counter/anchor/programs/counter/src/lib.rs
