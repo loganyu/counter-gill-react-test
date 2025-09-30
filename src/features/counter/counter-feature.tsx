@@ -6,6 +6,8 @@ import { CounterUiList } from './ui/counter-ui-list'
 import { CounterUiProgramExplorerLink } from './ui/counter-ui-program-explorer-link'
 import { CounterUiProgramGuard } from './ui/counter-ui-program-guard'
 
+import { CounterExample } from './ui/counter-example'
+
 export default function CounterFeature() {
   const { account } = useSolana()
 
@@ -31,6 +33,9 @@ export default function CounterFeature() {
         )}
       </AppHero>
       {account ? <CounterUiList account={account} /> : null}
+      <AppHero>
+        <CounterExample account={account} />
+      </AppHero>
     </CounterUiProgramGuard>
   )
 }
