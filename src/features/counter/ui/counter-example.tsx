@@ -10,11 +10,15 @@ import { toastTx } from '@/components/toast-tx'
 import { AppExplorerLink } from '@/components/app-explorer-link'
 
 export function CounterExample({ account }: { account: UiWalletAccount }) {
-  const { rpc, sendAndConfirmTransaction } = useSolanaClient();
+  const { rpc } = useSolanaClient();
   const signer = useWalletUiSigner({ account })
   const [counterAddress, setCounterAddress] = useState<Address | null>(null)
+  const [counterType, setCounterType] = useState<'simple' | 'withPda'>('simple')
+  const [pdaAddress, setPdaAddress] = useState<Address | null>(null)
 
-  const { useProgramMutation, useProgramQuery } = useCounterProgram()
+  const { useProgramMutation, useProgramQuery, authorityPda } = useCounterProgram()
+
+  useState(() => { authorityPda.then(pda => setPdaAddress(pda)) })
 
   const initializeMutation = useProgramMutation({
     instruction: 'initialize',
@@ -31,14 +35,42 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
     },
   })
 
+  const initializeWithPdaMutation = useProgramMutation({
+    instruction: 'initializeWithPda',
+    onMutate: async (data) => {
+      setCounterAddress(data.counter.address)
+      setCounterType('withPda')
+    },
+    onSuccess: (signature) => {
+      console.log('Initialize with PDA successful:', signature)
+      toastTx(signature)
+    },
+    onError: (error) => {
+      setCounterAddress(null)
+      toast.error(`Initialize with PDA failed: ${error.message}`)
+    },
+  })
+
   const incrementMutation = useProgramMutation({
     instruction: 'increment',
+    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Increment successful:', signature)
       toastTx(signature)
     },
     onError: (error) => {
       toast.error(`increment onerror', ${error}`)
+    },
+  })
+
+  const incrementWithPdaMutation = useProgramMutation({
+    instruction: 'incrementWithPda',
+    onSuccess: (signature) => {
+      console.log('Increment with PDA successful:', signature)
+      toastTx(signature)
+    },
+    onError: (error) => {
+      toast.error(`Increment with PDA failed: ${error.message}`)
     },
   })
 
@@ -55,6 +87,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
   const setMutation = useProgramMutation({
     instruction: 'set',
+    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Set successful:', signature)
       toastTx(signature)
@@ -66,6 +99,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
   const closeMutation = useProgramMutation({
     instruction: 'close',
+    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Close successful:', signature)
       toastTx(signature)
@@ -77,7 +111,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
   })  
 
   const counterQuery = useProgramQuery({
-    account: 'counter',
+    account: counterType === 'simple' ? 'counter' : 'counterWithAuthority',
     address: counterAddress!,
     rpc,
     enabled: !!counterAddress,
@@ -93,25 +127,43 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
             initializeMutation.mutate({
               counter,
               payer: signer,
-              signer
+              signer: signer,
             })}
           } 
           disabled={initializeMutation.isPending}>
-          {initializeMutation.isPending ? 'Initializing...' : 'Initialize Counter'}
+          {initializeMutation.isPending ? 'Initializing...' : 'Initialize Simple Counter'}
         </Button>
-        {initializeMutation.error && (
-          <p className="text-sm text-red-600">{initializeMutation.error.message}</p>
+
+        <Button 
+          onClick={async () => {
+            const counter = await generateKeyPairSigner()
+            initializeWithPdaMutation.mutate({
+              counter,
+              payer: signer,
+              authority: pdaAddress!,
+              signer: signer,
+            })
+          }} 
+          disabled={initializeWithPdaMutation.isPending}
+          variant="secondary"
+        >
+          {initializeWithPdaMutation.isPending ? 'Initializing...' : 'Initialize PDA Counter'}
+        </Button>
+        {(initializeMutation.error || initializeWithPdaMutation.error) && (
+          <p className="text-sm text-red-600">
+            {initializeMutation.error?.message || initializeWithPdaMutation.error?.message}
+          </p>
         )}
       </div>
     )
   }
 
-  console.log('counterQuery.data', counterQuery.data);
-
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-2">Counter using createProgramHook</h2>
+        <h2 className="text-xl font-semibold mb-2">
+          Counter using createProgramHook ({counterType === 'simple' ? 'Simple' : 'PDA'})
+        </h2>
         {initializeMutation.isSuccess && (
           <AppExplorerLink address={counterAddress} label={ellipsify(counterAddress)} />
         )}
@@ -123,55 +175,108 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
           <p className="text-red-600 text-sm">{counterQuery.error.message}</p>
         )}
         {counterQuery.data && (
-          <div className="text-6xl font-bold text-black">{counterQuery.data.data.count}</div>
+          <>
+            {console.log('[CounterExample] Rendering count:', counterQuery.data.data.count)}
+            <div className="text-6xl font-bold text-black">{counterQuery.data.data.count}</div>
+          </>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          onClick={() => incrementMutation.mutateAsync({counter: counterAddress, signer})}
-          disabled={incrementMutation.isPending || !counterQuery.data}
-          variant="default"
-        >
-          {incrementMutation.isPending ? 'Incrementing...' : 'Increment'}
-        </Button>
+      {counterType === 'simple' ? (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 font-semibold">Simple Counter (requires authority signer)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              onClick={() => incrementMutation.mutate({
+                counter: counterAddress,
+                authority: signer,
+                signer: signer,
+              })}
+              disabled={incrementMutation.isPending || !counterQuery.data}
+              variant="default"
+            >
+              {incrementMutation.isPending ? 'Incrementing...' : 'Increment (with signer)'}
+            </Button>
 
-        <Button
-          onClick={() => {decrementMutation.mutateAsync({counter: counterAddress, signer})}}
-          disabled={decrementMutation.isPending || !counterQuery.data}
-          variant="secondary"
-        >
-          {decrementMutation.isPending ? 'Decrementing...' : 'Decrement'}
-        </Button>
+            <Button
+              onClick={() => decrementMutation.mutate({
+                counter: counterAddress,
+                signer: [],
+              })}
+              disabled={decrementMutation.isPending || !counterQuery.data}
+              variant="secondary"
+            >
+              {decrementMutation.isPending ? 'Decrementing...' : 'Decrement (no signer)'}
+            </Button>
 
-        <Button
-          onClick={() => setMutation.mutateAsync({
-            counter: counterAddress,
-            value: 11,
-            signer,
-          })}
-          disabled={setMutation.isPending || !counterQuery.data}
-          variant="outline"
-        >
-          {setMutation.isPending ? 'Setting...' : 'Set to 11'}
-        </Button>
+            <Button
+              onClick={() => setMutation.mutate({
+                counter: counterAddress,
+                authority: signer,
+                value: 42,
+              })}
+              disabled={setMutation.isPending || !counterQuery.data}
+              variant="outline"
+            >
+              {setMutation.isPending ? 'Setting...' : 'Set to 42 (with signer)'}
+            </Button>
 
-        <Button
-          onClick={() => closeMutation.mutateAsync({
-            payer: signer,
-            counter: counterAddress,
-            signer,
-          })}
-          disabled={!counterAddress || closeMutation.isPending}
-          variant="destructive"
-        >
-          {closeMutation.isPending ? 'Closing...' : 'Close Account'}
-        </Button>
-      </div>
+            <Button
+              onClick={() => closeMutation.mutate({
+                payer: signer,
+                counter: counterAddress,
+              })}
+              disabled={!counterAddress || closeMutation.isPending}
+              variant="destructive"
+            >
+              {closeMutation.isPending ? 'Closing...' : 'Close Account'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 font-semibold">PDA Counter (authority is PDA)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              onClick={() => incrementWithPdaMutation.mutate({
+                counter: counterAddress,
+                authority: pdaAddress!,
+              })}
+              disabled={incrementWithPdaMutation.isPending || !counterQuery.data}
+              variant="default"
+            >
+              {incrementWithPdaMutation.isPending ? 'Incrementing...' : 'Increment (PDA signs)'}
+            </Button>
 
-      {(incrementMutation.error || decrementMutation.error || setMutation.error || closeMutation.error) && (
+            <Button
+              onClick={() => decrementMutation.mutate({
+                counter: counterAddress,
+              })}
+              disabled={decrementMutation.isPending || !counterQuery.data}
+              variant="secondary"
+            >
+              {decrementMutation.isPending ? 'Decrementing...' : 'Decrement (no signer)'}
+            </Button>
+
+            <Button
+              onClick={() => closeMutation.mutate({
+                payer: signer,
+                counter: counterAddress,
+              })}
+              disabled={!counterAddress || closeMutation.isPending}
+              variant="destructive"
+            >
+              {closeMutation.isPending ? 'Closing...' : 'Close Account'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Messages */}
+      {(incrementMutation.error || incrementWithPdaMutation.error || decrementMutation.error || setMutation.error || closeMutation.error) && (
         <div className="bg-red-50 text-red-800 p-3 rounded text-sm">
           {incrementMutation.error?.message || 
+           incrementWithPdaMutation.error?.message ||
            decrementMutation.error?.message || 
            setMutation.error?.message || 
            closeMutation.error?.message}

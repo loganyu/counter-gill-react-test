@@ -22,6 +22,9 @@ export default function CounterFeature() {
         }
       >
         <p className="mb-6">
+          {account ? <CounterExample account={account} /> : null}
+        </p>
+        <p className="mb-6">
           <CounterUiProgramExplorerLink />
         </p>
         {account ? (
@@ -33,9 +36,6 @@ export default function CounterFeature() {
         )}
       </AppHero>
       {account ? <CounterUiList account={account} /> : null}
-      <AppHero>
-        <CounterExample account={account} />
-      </AppHero>
     </CounterUiProgramGuard>
   )
 }
