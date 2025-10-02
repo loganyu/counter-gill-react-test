@@ -13,11 +13,15 @@ import {
 } from 'anchor/src/client/js'
 import { useWalletUiSignAndSend } from '@wallet-ui/react-gill'
 import { getProgramDerivedAddress, address } from 'gill'
+import { createSolanaClient } from "gill";
 
 const PROGRAM_ID = address("B3oFEmT9LiYrbd8CknDvbkLynbcmJWWQ5cqwoXGuqRfi")
 
 export function useCounterProgram() {
   const signAndSend = useWalletUiSignAndSend()
+  const { rpc } = createSolanaClient({
+    urlOrMoniker: "devnet",
+  });
 
   const authorityPda = useMemo(async () => {
     const [pda] = await getProgramDerivedAddress({
@@ -42,6 +46,7 @@ export function useCounterProgram() {
       counterWithAuthority: fetchCounterWithAuthority,
     },
     signAndSend,
+    rpc,
   })
 
   return {

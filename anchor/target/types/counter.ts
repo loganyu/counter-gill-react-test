@@ -74,6 +74,51 @@ export type Counter = {
         {
           "name": "counter",
           "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "incrementWithPda",
+      "discriminator": [
+        230,
+        75,
+        141,
+        91,
+        58,
+        100,
+        149,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "counter",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -109,6 +154,39 @@ export type Counter = {
       "args": []
     },
     {
+      "name": "initializeWithPda",
+      "discriminator": [
+        223,
+        205,
+        128,
+        100,
+        111,
+        48,
+        108,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "counter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "set",
       "discriminator": [
         198,
@@ -124,6 +202,10 @@ export type Counter = {
         {
           "name": "counter",
           "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
         }
       ],
       "args": [
@@ -147,6 +229,19 @@ export type Counter = {
         124,
         25
       ]
+    },
+    {
+      "name": "counterWithAuthority",
+      "discriminator": [
+        225,
+        93,
+        129,
+        138,
+        117,
+        8,
+        42,
+        250
+      ]
     }
   ],
   "types": [
@@ -155,6 +250,22 @@ export type Counter = {
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "counterWithAuthority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
           {
             "name": "count",
             "type": "u8"

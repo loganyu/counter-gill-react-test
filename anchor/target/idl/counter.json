@@ -68,6 +68,51 @@
         {
           "name": "counter",
           "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "increment_with_pda",
+      "discriminator": [
+        230,
+        75,
+        141,
+        91,
+        58,
+        100,
+        149,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "counter",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -103,6 +148,39 @@
       "args": []
     },
     {
+      "name": "initialize_with_pda",
+      "discriminator": [
+        223,
+        205,
+        128,
+        100,
+        111,
+        48,
+        108,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "counter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "set",
       "discriminator": [
         198,
@@ -118,6 +196,10 @@
         {
           "name": "counter",
           "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
         }
       ],
       "args": [
@@ -141,6 +223,19 @@
         124,
         25
       ]
+    },
+    {
+      "name": "CounterWithAuthority",
+      "discriminator": [
+        225,
+        93,
+        129,
+        138,
+        117,
+        8,
+        42,
+        250
+      ]
     }
   ],
   "types": [
@@ -149,6 +244,22 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CounterWithAuthority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
           {
             "name": "count",
             "type": "u8"

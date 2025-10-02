@@ -12,11 +12,11 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   transformEncoder,
   type AccountMeta,
-  type AccountSignerMeta,
   type Address,
   type FixedSizeCodec,
   type FixedSizeDecoder,
@@ -24,23 +24,24 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlySignerAccount,
+  type ReadonlyAccount,
   type ReadonlyUint8Array,
-  type TransactionSigner,
   type WritableAccount,
 } from 'gill';
 import { COUNTER_PROGRAM_ADDRESS } from '../programs';
 import { getAccountMetaFactory, type ResolvedAccount } from '../shared';
 
-export const INCREMENT_DISCRIMINATOR = new Uint8Array([
-  11, 18, 104, 9, 104, 174, 59, 33,
+export const INCREMENT_WITH_PDA_DISCRIMINATOR = new Uint8Array([
+  230, 75, 141, 91, 58, 100, 149, 137,
 ]);
 
-export function getIncrementDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(INCREMENT_DISCRIMINATOR);
+export function getIncrementWithPdaDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(
+    INCREMENT_WITH_PDA_DISCRIMINATOR
+  );
 }
 
-export type IncrementInstruction<
+export type IncrementWithPdaInstruction<
   TProgram extends string = typeof COUNTER_PROGRAM_ADDRESS,
   TAccountCounter extends string | AccountMeta<string> = string,
   TAccountAuthority extends string | AccountMeta<string> = string,
@@ -53,56 +54,123 @@ export type IncrementInstruction<
         ? WritableAccount<TAccountCounter>
         : TAccountCounter,
       TAccountAuthority extends string
-        ? ReadonlySignerAccount<TAccountAuthority> &
-            AccountSignerMeta<TAccountAuthority>
+        ? ReadonlyAccount<TAccountAuthority>
         : TAccountAuthority,
       ...TRemainingAccounts,
     ]
   >;
 
-export type IncrementInstructionData = { discriminator: ReadonlyUint8Array };
+export type IncrementWithPdaInstructionData = {
+  discriminator: ReadonlyUint8Array;
+};
 
-export type IncrementInstructionDataArgs = {};
+export type IncrementWithPdaInstructionDataArgs = {};
 
-export function getIncrementInstructionDataEncoder(): FixedSizeEncoder<IncrementInstructionDataArgs> {
+export function getIncrementWithPdaInstructionDataEncoder(): FixedSizeEncoder<IncrementWithPdaInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([['discriminator', fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: INCREMENT_DISCRIMINATOR })
+    (value) => ({ ...value, discriminator: INCREMENT_WITH_PDA_DISCRIMINATOR })
   );
 }
 
-export function getIncrementInstructionDataDecoder(): FixedSizeDecoder<IncrementInstructionData> {
+export function getIncrementWithPdaInstructionDataDecoder(): FixedSizeDecoder<IncrementWithPdaInstructionData> {
   return getStructDecoder([
     ['discriminator', fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getIncrementInstructionDataCodec(): FixedSizeCodec<
-  IncrementInstructionDataArgs,
-  IncrementInstructionData
+export function getIncrementWithPdaInstructionDataCodec(): FixedSizeCodec<
+  IncrementWithPdaInstructionDataArgs,
+  IncrementWithPdaInstructionData
 > {
   return combineCodec(
-    getIncrementInstructionDataEncoder(),
-    getIncrementInstructionDataDecoder()
+    getIncrementWithPdaInstructionDataEncoder(),
+    getIncrementWithPdaInstructionDataDecoder()
   );
 }
 
-export type IncrementInput<
+export type IncrementWithPdaAsyncInput<
   TAccountCounter extends string = string,
   TAccountAuthority extends string = string,
 > = {
   counter: Address<TAccountCounter>;
-  authority: TransactionSigner<TAccountAuthority>;
+  authority?: Address<TAccountAuthority>;
 };
 
-export function getIncrementInstruction<
+export async function getIncrementWithPdaInstructionAsync<
   TAccountCounter extends string,
   TAccountAuthority extends string,
   TProgramAddress extends Address = typeof COUNTER_PROGRAM_ADDRESS,
 >(
-  input: IncrementInput<TAccountCounter, TAccountAuthority>,
+  input: IncrementWithPdaAsyncInput<TAccountCounter, TAccountAuthority>,
   config?: { programAddress?: TProgramAddress }
-): IncrementInstruction<TProgramAddress, TAccountCounter, TAccountAuthority> {
+): Promise<
+  IncrementWithPdaInstruction<
+    TProgramAddress,
+    TAccountCounter,
+    TAccountAuthority
+  >
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? COUNTER_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    counter: { value: input.counter ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedAccount
+  >;
+
+  // Resolve default values.
+  if (!accounts.authority.value) {
+    accounts.authority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([97, 117, 116, 104, 111, 114, 105, 116, 121])
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
+  return Object.freeze({
+    accounts: [
+      getAccountMeta(accounts.counter),
+      getAccountMeta(accounts.authority),
+    ],
+    data: getIncrementWithPdaInstructionDataEncoder().encode({}),
+    programAddress,
+  } as IncrementWithPdaInstruction<
+    TProgramAddress,
+    TAccountCounter,
+    TAccountAuthority
+  >);
+}
+
+export type IncrementWithPdaInput<
+  TAccountCounter extends string = string,
+  TAccountAuthority extends string = string,
+> = {
+  counter: Address<TAccountCounter>;
+  authority: Address<TAccountAuthority>;
+};
+
+export function getIncrementWithPdaInstruction<
+  TAccountCounter extends string,
+  TAccountAuthority extends string,
+  TProgramAddress extends Address = typeof COUNTER_PROGRAM_ADDRESS,
+>(
+  input: IncrementWithPdaInput<TAccountCounter, TAccountAuthority>,
+  config?: { programAddress?: TProgramAddress }
+): IncrementWithPdaInstruction<
+  TProgramAddress,
+  TAccountCounter,
+  TAccountAuthority
+> {
   // Program address.
   const programAddress = config?.programAddress ?? COUNTER_PROGRAM_ADDRESS;
 
@@ -122,16 +190,16 @@ export function getIncrementInstruction<
       getAccountMeta(accounts.counter),
       getAccountMeta(accounts.authority),
     ],
-    data: getIncrementInstructionDataEncoder().encode({}),
+    data: getIncrementWithPdaInstructionDataEncoder().encode({}),
     programAddress,
-  } as IncrementInstruction<
+  } as IncrementWithPdaInstruction<
     TProgramAddress,
     TAccountCounter,
     TAccountAuthority
   >);
 }
 
-export type ParsedIncrementInstruction<
+export type ParsedIncrementWithPdaInstruction<
   TProgram extends string = typeof COUNTER_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -140,17 +208,17 @@ export type ParsedIncrementInstruction<
     counter: TAccountMetas[0];
     authority: TAccountMetas[1];
   };
-  data: IncrementInstructionData;
+  data: IncrementWithPdaInstructionData;
 };
 
-export function parseIncrementInstruction<
+export function parseIncrementWithPdaInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
-): ParsedIncrementInstruction<TProgram, TAccountMetas> {
+): ParsedIncrementWithPdaInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 2) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
@@ -164,6 +232,6 @@ export function parseIncrementInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: { counter: getNextAccount(), authority: getNextAccount() },
-    data: getIncrementInstructionDataDecoder().decode(instruction.data),
+    data: getIncrementWithPdaInstructionDataDecoder().decode(instruction.data),
   };
 }
