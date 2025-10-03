@@ -39,4 +39,4 @@ test-ledger
 **/*.rs.bk
 
 /anchor/src/client/js/*.ts
-
+anchor/src/vault/client/js/*.ts

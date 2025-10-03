@@ -6,3 +6,8 @@ export default createCodamaConfig({
   clientJs: 'anchor/src/client/js/generated',
   idl: 'target/idl/counter.json',
 })
+
+// export default createCodamaConfig({
+//   clientJs: 'anchor/src/vault/client/js/generated',
+//   idl: 'target/idl/vault.json',
+// })
