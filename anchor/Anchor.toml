@@ -8,7 +8,7 @@ skip-lint = false
 # [programs.localnet]
 [programs.devnet]
 counter = "B3oFEmT9LiYrbd8CknDvbkLynbcmJWWQ5cqwoXGuqRfi"
-vault = "ArXdRsT2zBK98eX6yMh2qMTPGgsLnG4hrXbX95ZjqeZ3"
+vault = "4trU6PxX9bq7yAkFaCr4SmfbzddSEbbnufuZ8CjpBy1R"
 
 [registry]
 url = "https://api.apr.dev"

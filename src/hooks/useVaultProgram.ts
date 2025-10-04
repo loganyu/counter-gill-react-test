@@ -1,37 +1,24 @@
 import { createProgramHook } from "@gillsdk/react";
 import { 
-  getInitializeInstruction, 
+  getInitializeVaultInstruction,
   getDepositInstruction,
   getWithdrawInstruction,
-  getCloseInstruction,
-  fetchVaultState,
+  fetchVault,
 } from 'anchor/src/vault/client/js'
-import { useWalletUiSignAndSend } from '@wallet-ui/react-gill'
 import { address } from 'gill'
-import { createSolanaClient } from "gill";
 
-const PROGRAM_ID = address("ArXdRsT2zBK98eX6yMh2qMTPGgsLnG4hrXbX95ZjqeZ3")
-
+const PROGRAM_ID = address("4trU6PxX9bq7yAkFaCr4SmfbzddSEbbnufuZ8CjpBy1R")
 
 export function useVaultProgram() {
-  const signAndSend = useWalletUiSignAndSend()
-  const { rpc } = createSolanaClient({
-    urlOrMoniker: "devnet",
-  });
-  
-
   const hooks = createProgramHook({
     instructions: {
-      initialize: getInitializeInstruction,
+      initializeVault: getInitializeVaultInstruction,
       deposit: getDepositInstruction,
       withdraw: getWithdrawInstruction,
-      close: getCloseInstruction,
     },
     accounts: {
-      vaultState: fetchVaultState,
+      vault: fetchVault,
     },
-    signAndSend,
-    rpc,
     programAddress: PROGRAM_ID,
   })
 

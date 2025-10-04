@@ -5,9 +5,10 @@ import { useSolanaClient } from "@gillsdk/react";
 import { generateKeyPairSigner } from 'gill'
 import type { Address } from 'gill'
 import { useCounterProgram } from '@/hooks/useCounterProgram'
+import { AppExplorerLink } from '@/components/app-explorer-link'
 import { toast } from 'sonner'
 import { toastTx } from '@/components/toast-tx'
-import { AppExplorerLink } from '@/components/app-explorer-link'
+import { useWalletUiSignAndSend } from '@wallet-ui/react-gill'
 
 export function CounterExample({ account }: { account: UiWalletAccount }) {
   const { rpc } = useSolanaClient();
@@ -15,6 +16,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
   const [counterAddress, setCounterAddress] = useState<Address | null>(null)
   const [counterType, setCounterType] = useState<'simple' | 'withPda'>('simple')
   const [pdaAddress, setPdaAddress] = useState<Address | null>(null)
+  const signAndSend = useWalletUiSignAndSend()
 
   const { useProgramMutation, useProgramQuery, authorityPda } = useCounterProgram()
 
@@ -23,7 +25,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
   const initializeMutation = useProgramMutation({
     instruction: 'initialize',
     onMutate: (data) => {
-      setCounterAddress(data.counter.address);
+      setCounterAddress(data.params.counter.address);
     },
     onSuccess: (signature) => {
       console.log('Initialize successful:', signature)
@@ -38,7 +40,7 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
   const initializeWithPdaMutation = useProgramMutation({
     instruction: 'initializeWithPda',
     onMutate: async (data) => {
-      setCounterAddress(data.counter.address)
+      setCounterAddress(data.params.counter.address)
       setCounterType('withPda')
     },
     onSuccess: (signature) => {
@@ -53,7 +55,6 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
   const incrementMutation = useProgramMutation({
     instruction: 'increment',
-    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Increment successful:', signature)
       toastTx(signature)
@@ -87,7 +88,6 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
   const setMutation = useProgramMutation({
     instruction: 'set',
-    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Set successful:', signature)
       toastTx(signature)
@@ -99,7 +99,6 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
   const closeMutation = useProgramMutation({
     instruction: 'close',
-    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Close successful:', signature)
       toastTx(signature)
@@ -124,10 +123,16 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
         <Button 
           onClick={async () => {
             const counter = await generateKeyPairSigner()
+            console.log('counter', counter)
+            console.log('signer', signer)
             initializeMutation.mutate({
-              counter,
-              payer: signer,
+              params: {
+                counter,
+                payer: signer,
+              },
               signer: signer,
+              signAndSend,
+              rpc,
             })}
           } 
           disabled={initializeMutation.isPending}>
@@ -138,10 +143,14 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
           onClick={async () => {
             const counter = await generateKeyPairSigner()
             initializeWithPdaMutation.mutate({
-              counter,
-              payer: signer,
-              authority: pdaAddress!,
+              params: {
+                counter,
+                payer: signer,
+                authority: pdaAddress!,
+              },
               signer: signer,
+              signAndSend,
+              rpc,
             })
           }} 
           disabled={initializeWithPdaMutation.isPending}
@@ -176,7 +185,6 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
         )}
         {counterQuery.data && (
           <>
-            {console.log('[CounterExample] Rendering count:', counterQuery.data.data.count)}
             <div className="text-6xl font-bold text-black">{counterQuery.data.data.count}</div>
           </>
         )}
@@ -188,9 +196,13 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
           <div className="grid grid-cols-2 gap-3">
             <Button
               onClick={() => incrementMutation.mutate({
-                counter: counterAddress,
-                authority: signer,
-                signer: signer,
+                params: {
+                  counter: counterAddress,
+                  authority: signer,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={incrementMutation.isPending || !counterQuery.data}
               variant="default"
@@ -200,20 +212,29 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
             <Button
               onClick={() => decrementMutation.mutate({
-                counter: counterAddress,
-                signer: [],
+                params: {
+                  counter: counterAddress,
+                },
+                signer: signer,
+                signAndSend,
+                rpc,
               })}
               disabled={decrementMutation.isPending || !counterQuery.data}
               variant="secondary"
             >
-              {decrementMutation.isPending ? 'Decrementing...' : 'Decrement (no signer)'}
+              {decrementMutation.isPending ? 'Decrementing...' : 'Decrement'}
             </Button>
 
             <Button
               onClick={() => setMutation.mutate({
-                counter: counterAddress,
-                authority: signer,
-                value: 42,
+                params: {
+                  counter: counterAddress,
+                  authority: signer,
+                  value: 42,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={setMutation.isPending || !counterQuery.data}
               variant="outline"
@@ -223,8 +244,13 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
             <Button
               onClick={() => closeMutation.mutate({
-                payer: signer,
-                counter: counterAddress,
+                params: {
+                  payer: signer,
+                  counter: counterAddress,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={!counterAddress || closeMutation.isPending}
               variant="destructive"
@@ -239,8 +265,13 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
           <div className="grid grid-cols-2 gap-3">
             <Button
               onClick={() => incrementWithPdaMutation.mutate({
-                counter: counterAddress,
-                authority: pdaAddress!,
+                params: {
+                  counter: counterAddress,
+                  authority: pdaAddress!,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={incrementWithPdaMutation.isPending || !counterQuery.data}
               variant="default"
@@ -250,7 +281,12 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
             <Button
               onClick={() => decrementMutation.mutate({
-                counter: counterAddress,
+                params: {
+                  counter: counterAddress,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={decrementMutation.isPending || !counterQuery.data}
               variant="secondary"
@@ -260,8 +296,13 @@ export function CounterExample({ account }: { account: UiWalletAccount }) {
 
             <Button
               onClick={() => closeMutation.mutate({
-                payer: signer,
-                counter: counterAddress,
+                params: {
+                  payer: signer,
+                  counter: counterAddress,
+                },
+                signer,
+                signAndSend,
+                rpc,
               })}
               disabled={!counterAddress || closeMutation.isPending}
               variant="destructive"

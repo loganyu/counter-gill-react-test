@@ -8,20 +8,37 @@ import { useVaultProgram } from '@/hooks/useVaultProgram'
 import { toast } from 'sonner'
 import { toastTx } from '@/components/toast-tx'
 import { AppExplorerLink } from '@/components/app-explorer-link'
-import { getProgramDerivedAddress, getAddressEncoder, address as createAddress } from 'gill'
+import { useWalletUiSignAndSend } from '@wallet-ui/react-gill'
+import { getProgramDerivedAddress, getAddressEncoder, generateKeyPairSigner, address as createAddress} from 'gill'
 
-const LAMPORTS_PER_SOL = 1_000_000_000;
-const PROGRAM_ID = createAddress("ArXdRsT2zBK98eX6yMh2qMTPGgsLnG4hrXbX95ZjqeZ3")
+import {
+  getAssociatedTokenAccountAddress,
+  TOKEN_PROGRAM_ADDRESS,
+} from "gill/programs";
 
 
+const TOKEN_MINT = createAddress("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
+
+const PROGRAM_ID = createAddress("4trU6PxX9bq7yAkFaCr4SmfbzddSEbbnufuZ8CjpBy1R")
 
 export function VaultExample({ account }: { account: UiWalletAccount }) {
   const { rpc } = useSolanaClient();
   const signer = useWalletUiSigner({ account })
-  const [vaultStateAddress, setVaultStateAddress] = useState<Address | null>(null)
-  const [vaultAddress, setVaultAddress] = useState<Address | null>(null)
-  const [depositAmount, setDepositAmount] = useState('')
-  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const signAndSend = useWalletUiSignAndSend()
+
+  // State for the PDAs
+  const [vaultAddress, setVaultAddress] = useState<Address | null>(null);
+  const [vaultAuthorityAddress, setVaultAuthorityAddress] = useState<Address | null>(null);
+
+  // State for bumps
+  const [vaultBump, setVaultBump] = useState<number | null>(null);
+  const [authorityBump, setAuthorityBump] = useState<number | null>(null);
+  
+  // UI state
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [vaultBalance, setVaultBalance] = useState<number>(0);
+
 
   const { useProgramMutation, useProgramQuery } = useVaultProgram()
 
@@ -29,50 +46,62 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
     async function derivePDAs() {
       if (!signer?.address) return;
       
-      const [vaultState] = await getProgramDerivedAddress({
+      const [derivedVaultAddress, derivedVaultBump] = await getProgramDerivedAddress({
         programAddress: PROGRAM_ID,
-        seeds: ["state",
+        seeds: [
+          new TextEncoder().encode("vault"),
+          getAddressEncoder().encode(createAddress(TOKEN_MINT)),
           getAddressEncoder().encode(createAddress(signer.address))
         ]
-      })
+      });
       
-      const [vault] = await getProgramDerivedAddress({
+      const [derivedAuthorityAddress, derivedAuthorityBump] = await getProgramDerivedAddress({
         programAddress: PROGRAM_ID,
-        seeds: ["vault",
-          getAddressEncoder().encode(createAddress(signer.address)),
-          getAddressEncoder().encode(createAddress(vaultState))
+        seeds: [
+          new TextEncoder().encode("authority"),
+          getAddressEncoder().encode(derivedVaultAddress)
         ]
-      })
+      });
 
-      console.log('vaultState', vaultState);
-      console.log('vault', vault);
-      
-      setVaultStateAddress(vaultState)
-      setVaultAddress(vault)
+      setVaultAddress(derivedVaultAddress);
+      setVaultBump(derivedVaultBump);
+      setVaultAuthorityAddress(derivedAuthorityAddress);
+      setAuthorityBump(derivedAuthorityBump);
     }
     
     derivePDAs()
   }, [signer?.address])
 
-  const initializeMutation = useProgramMutation({
-    instruction: 'initialize',
-    onMutate: (data) => {
-      console.log('initializeMutation data:', data)
-      setVaultAddress(data.vault);
-    },
+  useEffect(() => {
+    async function fetchMintInfo() {
+      try {
+        const mintInfo = await rpc.getAccountInfo(TOKEN_MINT).send();
+        if (mintInfo.value) {
+            // A simple way to get decimals from raw mint data (at byte 44)
+            // const decimals = mintInfo.value.data[44];
+            // setTokenDecimals(Number(decimals));
+        }
+      } catch (error) {
+        console.error("Failed to fetch token mint info:", error);
+      }
+    }
+    fetchMintInfo();
+  }, [rpc]);
+
+  const initializeVaultMutation = useProgramMutation({
+    instruction: 'initializeVault',
     onSuccess: (signature) => {
-      console.log('Initialize successful:', signature)
+      console.log('Initialize vault successful:', signature)
       toastTx(signature)
     },
     onError: (error) => {
-      setVaultAddress(null);
       toast.error(`Initialize failed: ${error.message}`)
     },
   })
 
+
   const depositMutation = useProgramMutation({
     instruction: 'deposit',
-    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Deposit successful:', signature)
       toastTx(signature)
@@ -85,7 +114,6 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
 
   const withdrawMutation = useProgramMutation({
     instruction: 'withdraw',
-    defaultSigners: signer,
     onSuccess: (signature) => {
       console.log('Withdraw successful:', signature)
       toastTx(signature)
@@ -96,77 +124,121 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
     },
   })
 
-  const closeMutation = useProgramMutation({
-    instruction: 'close',
-    defaultSigners: signer,
-    onSuccess: (signature) => {
-      console.log('Close successful:', signature)
-      toastTx(signature)
-      setVaultAddress(null)
-    },
-    onError: (error) => {
-      toast.error(`Close failed: ${error.message}`)
-    },
-  })
+  // const closeMutation = useProgramMutation({
+  //   instruction: 'close',
+  //   onSuccess: (signature) => {
+  //     console.log('Close successful:', signature)
+  //     toastTx(signature)
+  //     setVaultAddress(null)
+  //   },
+  //   onError: (error) => {
+  //     toast.error(`Close failed: ${error.message}`)
+  //   },
+  // })
 
-  const vaultStateQuery = useProgramQuery({
-    account: 'vaultState',
-    address: vaultStateAddress!,
-    rpc,
-    enabled: !!vaultStateAddress,
+  const vaultQuery = useProgramQuery({
+    account: 'vault',
+    address: vaultAddress!,
+    enabled: !!vaultAddress,
+    rpc
   })
-
-  const [vaultBalance, setVaultBalance] = useState<bigint>(0n)
 
   useEffect(() => {
     async function fetchBalance() {
-      if (!vaultAddress) return
+      if (!vaultQuery.data?.data.tokenAccount) return
+      
       try {
-        const accountInfo = await rpc.getAccountInfo(vaultAddress, { encoding: 'base64' }).send()
-        if (accountInfo.value) {
-          setVaultBalance(BigInt(accountInfo.value.lamports))
-        }
+        const balance = await rpc.getTokenAccountBalance(vaultQuery.data.data.tokenAccount).send();
+        const amountAsNumber = Number(balance.value.amount);
+        const divisor = 10 ** balance.value.decimals;
+        const readableBalance = amountAsNumber / divisor;
+        setVaultBalance(readableBalance);
+        
       } catch (error) {
-        console.error('Error fetching vault balance:', error)
+        console.error('Error fetching token balance:', error)
       }
     }
     
-    if (vaultStateQuery.data) {
-      fetchBalance()
-    }
-  }, [vaultAddress, rpc, vaultStateQuery.data])
+    fetchBalance()
+  }, [vaultQuery.data, rpc])
 
-  const handleDeposit = () => {
+  const handleInitialize = async () => {
+    if (!signer || !vaultAddress || vaultBump === null || !vaultAuthorityAddress || authorityBump === null) {
+        return;
+    }
+    // The `initializeVault` instruction creates a new token account.
+    // This new account needs to sign the transaction to authorize its own creation.
+    const newTokenAccount = await generateKeyPairSigner();
+
+    initializeVaultMutation.mutate({
+        params: {
+          vault: vaultAddress,
+          vaultAuthority: vaultAuthorityAddress,
+          tokenAccount: newTokenAccount,
+          mint: TOKEN_MINT,
+          payer: signer,
+          bump: vaultBump,
+          authorityBump: authorityBump,
+        },
+        signer,
+        signAndSend,
+        rpc,
+    });
+  };
+
+  const handleDeposit = async () => {
     const amount = parseFloat(depositAmount)
     if (isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount')
       return
     }
-    
-    depositMutation.mutate({
-      user: signer,
+
+    const ata = await getAssociatedTokenAccountAddress(TOKEN_MINT, signer.address, TOKEN_PROGRAM_ADDRESS);
+
+    const params = {
       vault: vaultAddress!,
-      vaultState: vaultStateAddress!,
-      amount: Math.floor(amount * LAMPORTS_PER_SOL),
+      vaultAuthority: vaultAuthorityAddress!,
+      mint: TOKEN_MINT,
+      userTokenAccount: ata,
+      vaultTokenAccount: vaultQuery.data!.data.tokenAccount,
+      authority: signer,
+      amount: BigInt(amount * (10 ** 6)),
+    }
+
+    depositMutation.mutate({
+      params,
+      signer,
+      signAndSend,
+      rpc,
     })
   }
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount)
     if (isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount')
       return
     }
+
+    const ata = await getAssociatedTokenAccountAddress(TOKEN_MINT, signer.address, TOKEN_PROGRAM_ADDRESS);
     
     withdrawMutation.mutate({
-      user: signer,
-      vault: vaultAddress!,
-      vaultState: vaultStateAddress!,
-      amount: Math.floor(amount * LAMPORTS_PER_SOL),
+      params: {
+        vault: vaultAddress!,
+        vaultAuthority: vaultAuthorityAddress!,
+        userTokenAccount: ata,
+        mint: TOKEN_MINT,
+        vaultTokenAccount: vaultQuery.data!.data.tokenAccount,
+        authority: signer,
+        amount: BigInt(amount * (10 ** 6)),
+      },
+      signer,
+      signAndSend,
+      rpc,
     })
   }
 
-  const isInitialized = vaultStateQuery.data && !vaultStateQuery.isError
+  const isInitialized = vaultQuery.data && !vaultQuery.isError
 
   if (!isInitialized) {
     return (
@@ -175,37 +247,26 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
         <p className="text-sm text-gray-600">
           Initialize a vault to securely store SOL. The vault uses PDAs (Program Derived Addresses) for security.
         </p>
-        {vaultStateAddress && vaultAddress && (
+        {vaultAddress && vaultAuthorityAddress && (
           <div className="text-xs text-gray-500 space-y-1">
-            <p>Vault State: {ellipsify(vaultStateAddress)}</p>
-            <p>Vault: {ellipsify(vaultAddress!)}</p>
+            <p>Vault PDA: {vaultAddress}</p>
+            <p>Authority PDA: {vaultAuthorityAddress!}</p>
           </div>
         )}
         <Button 
-          onClick={() => {
-            console.log("Signer object:", signer);
-            console.log("Has address?", 'address' in signer);
-            initializeMutation.mutate({
-              user: signer,
-              vaultState: vaultStateAddress!,
-              vault: vaultAddress!,
-              signer: signer,
-            })
-          }} 
-          disabled={initializeMutation.isPending || !vaultStateAddress}
+          onClick={handleInitialize} 
+          disabled={initializeVaultMutation.isPending || !vaultAddress || !vaultAuthorityAddress}
         >
-          {initializeMutation.isPending ? 'Initializing...' : 'Initialize Vault'}
+          {initializeVaultMutation.isPending ? 'Initializing...' : 'Initialize Vault'}
         </Button>
-        {initializeMutation.error && (
+        {initializeVaultMutation.error && (
           <p className="text-sm text-red-600">
-            {initializeMutation.error?.message}
+            {initializeVaultMutation.error?.message}
           </p>
         )}
       </div>
     )
   }
-
-  const balanceInSol = (Number(vaultBalance) / LAMPORTS_PER_SOL).toFixed(4)
 
   return (
     <div className="space-y-6">
@@ -214,25 +275,22 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
           Vault using createProgramHook
         </h2>
         <div className="space-y-1 text-xs text-gray-500">
-          <AppExplorerLink address={vaultStateAddress!} label={`State: ${ellipsify(vaultStateAddress!)}`} />
-          <AppExplorerLink address={vaultAddress!} label={`Vault: ${ellipsify(vaultAddress!)}`} />
+          <AppExplorerLink address={vaultAddress!} label={`Vault Address: ${ellipsify(vaultAddress!)}`} />
+          <AppExplorerLink address={vaultQuery.data.data.tokenAccount!} label={`Token Account: ${ellipsify(vaultQuery.data.data.tokenAccount!)}`} />
         </div>
       </div>
 
       {/* Balance Display */}
-      <div className="bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-8 text-center">
-        {vaultStateQuery.isLoading && <p className="text-gray-500">Loading vault...</p>}
-        {/* {vaultStateQuery.isError && vaultStateQuery.error && (
-          <p className="text-red-600 text-sm">{vaultStateQuery.error.message}</p>
-        )} */}
-        {vaultStateQuery.data && (
+      <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-lg p-8 text-center">
+        {vaultQuery.isLoading && <p className="text-gray-500">Loading vault...</p>}
+        {vaultQuery.data && (
           <div>
             <p className="text-sm text-gray-600 mb-1">Vault Balance</p>
-            <div className="text-5xl font-bold text-purple-900">{balanceInSol} SOL</div>
+            <div className="text-5xl font-bold text-green-900">{vaultBalance} tokens</div>
             <div className="text-xs text-gray-500 mt-3 space-y-1">
-              <p>Owner: {ellipsify(account.address)}</p>
-              <p>Vault Bump: {vaultStateQuery.data.data.vaultBump}</p>
-              <p>State Bump: {vaultStateQuery.data.data.stateBump}</p>
+              <p>Owner: {ellipsify(vaultQuery.data.data.authority)}</p>
+              <p>Bump: {vaultQuery.data.data.bump}</p>
+              <p>Authority Bump: {vaultQuery.data.data.authorityBump}</p>
             </div>
           </div>
         )}
@@ -240,14 +298,14 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
 
       {/* Deposit Section */}
       <div className="space-y-3">
-        <h3 className="text-lg font-semibold">Deposit SOL</h3>
+        <h3 className="text-lg font-semibold">Deposit Tokens</h3>
         <div className="flex gap-2">
           <Input
             type="number"
-            placeholder="Amount in SOL (e.g., 0.1)"
+            placeholder="Amount in tokens"
             value={depositAmount}
             onChange={(e) => setDepositAmount(e.target.value)}
-            step="0.01"
+            step="1"
             min="0"
             disabled={depositMutation.isPending}
           />
@@ -263,14 +321,14 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
 
       {/* Withdraw Section */}
       <div className="space-y-3">
-        <h3 className="text-lg font-semibold">Withdraw SOL</h3>
+        <h3 className="text-lg font-semibold">Withdraw Tokens</h3>
         <div className="flex gap-2">
           <Input
             type="number"
-            placeholder="Amount in SOL (e.g., 0.1)"
+            placeholder="Amount in tokens"
             value={withdrawAmount}
             onChange={(e) => setWithdrawAmount(e.target.value)}
-            step="0.01"
+            step="1"
             min="0"
             disabled={withdrawMutation.isPending}
           />
@@ -283,19 +341,9 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
             {withdrawMutation.isPending ? 'Withdrawing...' : 'Withdraw'}
           </Button>
         </div>
-        <Button
-          onClick={() => {
-            setWithdrawAmount(balanceInSol)
-          }}
-          variant="outline"
-          size="sm"
-          disabled={withdrawMutation.isPending}
-        >
-          Withdraw All
-        </Button>
       </div>
 
-      {/* Close Vault Section */}
+      {/* Close Vault Section
       <div className="pt-4 border-t">
         <Button
           onClick={() => closeMutation.mutate({
@@ -311,14 +359,13 @@ export function VaultExample({ account }: { account: UiWalletAccount }) {
         <p className="text-xs text-gray-500 mt-2">
           Closing the vault will return all remaining SOL to your wallet and delete the accounts.
         </p>
-      </div>
+      </div> */}
 
       {/* Error Messages */}
-      {(depositMutation.error || withdrawMutation.error || closeMutation.error) && (
+      {(depositMutation.error || withdrawMutation.error ) && (
         <div className="bg-red-50 text-red-800 p-3 rounded text-sm">
           {depositMutation.error?.message || 
-           withdrawMutation.error?.message || 
-           closeMutation.error?.message}
+           withdrawMutation.error?.message }
         </div>
       )}
     </div>  

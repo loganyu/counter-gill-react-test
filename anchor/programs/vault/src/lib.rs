@@ -1,204 +1,178 @@
 #![allow(unexpected_cfgs)]
 #![allow(deprecated)]
 
-use anchor_lang::{prelude::*, system_program::{Transfer, transfer}};
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint};
+declare_id!("4trU6PxX9bq7yAkFaCr4SmfbzddSEbbnufuZ8CjpBy1R");
 
-declare_id!("ArXdRsT2zBK98eX6yMh2qMTPGgsLnG4hrXbX95ZjqeZ3");
+#[account]
+#[derive(InitSpace)]
+pub struct Vault {
+    pub authority: Pubkey,        // Who can control this vault
+    pub token_account: Pubkey,    // The token account holding the funds
+    pub bump: u8,                 // PDA bump for the vault account
+    pub authority_bump: u8,       // PDA bump for the vault authority
+}
 
-#[program]
-pub mod vault {
-    use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        ctx.accounts.initialize(ctx.bumps)
-    }
-
-    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-        ctx.accounts.deposit(amount)
-    }
-
-    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
-        ctx.accounts.withdraw(amount)
-    }
-
-    pub fn close(ctx: Context<Close>) -> Result<()> {
-        ctx.accounts.close()
-    }
+#[error_code]
+pub enum VaultError {
+    #[msg("Insufficient funds in vault")]
+    InsufficientFunds,
+    #[msg("Unauthorized access")]
+    UnauthorizedAccess,
 }
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
+#[instruction(bump: u8, authority_bump: u8)]
+pub struct InitializeVault<'info> {
     #[account(
         init,
-        payer = user,
-        seeds = [b"state", user.key().as_ref()],
+        payer = payer,
+        seeds = [b"vault", mint.key().as_ref(), payer.key().as_ref()],
         bump,
-        space = 8 + VaultState::INIT_SPACE,
+        space = 8 + Vault::INIT_SPACE
     )]
-    pub vault_state: Account<'info, VaultState>,
+    pub vault: Account<'info, Vault>,
+    
+    /// CHECK: Safe because we derive it with PDA and just store it
     #[account(
-        mut,
-        seeds = [b"vault", vault_state.key().as_ref()],
-        bump,
+        seeds = [b"authority", vault.key().as_ref()],
+        bump = authority_bump
     )]
-    pub vault: SystemAccount<'info>,
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = payer,
+        token::mint = mint,
+        token::authority = vault_authority,
+    )]
+    pub token_account: Account<'info, TokenAccount>,
+    pub mint: Account<'info, Mint>,
+    
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"vault", vault_state.key().as_ref()],
-        bump = vault_state.vault_bump,
+        seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()],
+        bump = vault.bump,
+        has_one = authority
     )]
-    pub vault: SystemAccount<'info>,
+    pub vault: Account<'info, Vault>,
+    pub mint: Account<'info, Mint>,
+
+    /// CHECK: Safe because we derive it with PDA
     #[account(
-        seeds = [b"state", user.key().as_ref()],
-        bump = vault_state.state_bump,
+        seeds = [b"authority", vault.key().as_ref()],
+        bump = vault.authority_bump
     )]
-    pub vault_state: Account<'info, VaultState>,
-    pub system_program: Program<'info, System>,
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        token::authority = authority,
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        address = vault.token_account
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+    pub authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"vault", vault_state.key().as_ref()],
-        bump = vault_state.vault_bump,
+        seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()],
+        bump = vault.bump,
+        has_one = authority
     )]
-    pub vault: SystemAccount<'info>,
+    pub vault: Account<'info, Vault>,
+    pub mint: Account<'info, Mint>,
+
+    /// CHECK: Safe because we derive it with PDA
     #[account(
-        seeds = [b"state", user.key().as_ref()],
-        bump = vault_state.state_bump,
+        seeds = [b"authority", vault.key().as_ref()],
+        bump = vault.authority_bump
     )]
-    pub vault_state: Account<'info, VaultState>,
-    pub system_program: Program<'info, System>,
+    pub vault_authority: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        token::authority = authority,
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        address = vault.token_account
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+    pub authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
 }
 
-#[account]
-#[derive(InitSpace)]
-pub struct VaultState {
-    pub vault_bump: u8,
-    pub state_bump: u8,
-}
+#[program]
+pub mod vault {
+    use super::*;
 
-// impl Space for VaultState {
-//     const INIT_SPACE: usize = 8 + 1 + 1;
-// }
+    // 👇 STEP 2: Move your instruction logic inside these functions.
+    pub fn initialize_vault(
+        ctx: Context<InitializeVault>,
+        bump: u8,
+        authority_bump: u8,
+    ) -> Result<()> {
+        ctx.accounts.vault.set_inner(Vault {
+            authority: ctx.accounts.payer.key(),
+            token_account: ctx.accounts.token_account.key(),
+            bump,
+            authority_bump,
+        });
+        Ok(())
+    }
 
-impl<'info> Initialize<'info> {
-    pub fn initialize(&mut self, bumps: InitializeBumps) -> Result<()> {
-        let rent_exempt = Rent::get()?.minimum_balance(self.vault_state.to_account_info().data_len());
-
-        let cpi_program = self.system_program.to_account_info();
-
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         let cpi_accounts = Transfer {
-            from: self.user.to_account_info(),
-            to: self.vault.to_account_info(),
+            from: ctx.accounts.user_token_account.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
         };
-
+        let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-
-        transfer(cpi_ctx, rent_exempt)?;
-
-        self.vault_state.vault_bump = bumps.vault;
-        self.vault_state.state_bump = bumps.vault_state;
-
+        token::transfer(cpi_ctx, amount)?;
         Ok(())
     }
-}
 
-impl<'info> Deposit<'info> {
-    pub fn deposit(&mut self, amount: u64) -> Result<()> {
-        let cpi_program = self.system_program.to_account_info();
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+    
+        require!(
+            ctx.accounts.vault_token_account.amount >= amount,
+            VaultError::InsufficientFunds
+        );
+
+        let vault_key = vault.key();
+        let authority_seed = &[
+            b"authority",
+            vault_key.as_ref(),
+            &[vault.authority_bump],
+        ];
+        let signer = &[&authority_seed[..]];
 
         let cpi_accounts = Transfer {
-            from: self.user.to_account_info(),
-            to: self.vault.to_account_info(),
+            from: ctx.accounts.vault_token_account.to_account_info(),
+            to: ctx.accounts.user_token_account.to_account_info(),
+            authority: ctx.accounts.vault_authority.to_account_info(),
         };
-
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-
-        transfer(cpi_ctx, amount)?;
-
-        Ok(())
-    }
-}
-
-impl<'info> Withdraw<'info> {
-    pub fn withdraw(&mut self, amount: u64) -> Result<()> {
-        let cpi_program = self.system_program.to_account_info();
-
-        let cpi_accounts = Transfer {
-            from: self.user.to_account_info(),
-            to: self.vault.to_account_info(),
-        };
-
-        let seeds = &[
-            b"vault",
-            self.vault_state.to_account_info().key.as_ref(),
-            &[self.vault_state.vault_bump],
-        ];
-
-        let signer_seeds = &[&seeds[..]];
-
-        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
-
-        transfer(cpi_ctx, amount)?;
-
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Close<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    #[account(
-        mut,
-        seeds = [b"state", signer.key().as_ref()],
-        bump = vault_state.state_bump,
-        close = signer,
-    )]
-    pub vault_state: Account<'info, VaultState>,
-    #[account(
-        mut,
-        seeds = [b"vault", vault_state.key().as_ref()],
-        bump = vault_state.vault_bump,
-    )]
-    pub vault: SystemAccount<'info>,
-    pub system_program: Program<'info, System>
-}
-
-impl<'info> Close<'info> {
-    pub fn close(&mut self) -> Result<()> {
-
-        let cpi_program: AccountInfo<'_> = self.system_program.to_account_info();
-
-        let cpi_account: Transfer<'_> = Transfer {
-            from: self.vault.to_account_info(),
-            to: self.signer.to_account_info(),
-        };
-
-        let pda_signing_seeds = [
-            b"vault",
-            self.vault_state.to_account_info().key.as_ref(),
-            &[self.vault_state.vault_bump],
-        ];
-        let seeds = &[&pda_signing_seeds[..]];
-
-        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_account, seeds);
-
-        transfer(cpi_ctx, self.vault.lamports())?;
-
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+        token::transfer(cpi_ctx, amount)?;
         Ok(())
     }
 }
