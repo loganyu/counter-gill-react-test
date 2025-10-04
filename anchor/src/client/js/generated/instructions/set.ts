@@ -18,6 +18,7 @@ import {
   getU8Encoder,
   transformEncoder,
   type AccountMeta,
+  type AccountSignerMeta,
   type Address,
   type FixedSizeCodec,
   type FixedSizeDecoder,
@@ -25,7 +26,9 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
+  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
+  type TransactionSigner,
   type WritableAccount,
 } from 'gill';
 import { COUNTER_PROGRAM_ADDRESS } from '../programs';
@@ -42,6 +45,7 @@ export function getSetDiscriminatorBytes() {
 export type SetInstruction<
   TProgram extends string = typeof COUNTER_PROGRAM_ADDRESS,
   TAccountCounter extends string | AccountMeta<string> = string,
+  TAccountAuthority extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -50,6 +54,10 @@ export type SetInstruction<
       TAccountCounter extends string
         ? WritableAccount<TAccountCounter>
         : TAccountCounter,
+      TAccountAuthority extends string
+        ? ReadonlySignerAccount<TAccountAuthority> &
+            AccountSignerMeta<TAccountAuthority>
+        : TAccountAuthority,
       ...TRemainingAccounts,
     ]
   >;
@@ -88,24 +96,30 @@ export function getSetInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type SetInput<TAccountCounter extends string = string> = {
+export type SetInput<
+  TAccountCounter extends string = string,
+  TAccountAuthority extends string = string,
+> = {
   counter: Address<TAccountCounter>;
+  authority: TransactionSigner<TAccountAuthority>;
   value: SetInstructionDataArgs['value'];
 };
 
 export function getSetInstruction<
   TAccountCounter extends string,
+  TAccountAuthority extends string,
   TProgramAddress extends Address = typeof COUNTER_PROGRAM_ADDRESS,
 >(
-  input: SetInput<TAccountCounter>,
+  input: SetInput<TAccountCounter, TAccountAuthority>,
   config?: { programAddress?: TProgramAddress }
-): SetInstruction<TProgramAddress, TAccountCounter> {
+): SetInstruction<TProgramAddress, TAccountCounter, TAccountAuthority> {
   // Program address.
   const programAddress = config?.programAddress ?? COUNTER_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
     counter: { value: input.counter ?? null, isWritable: true },
+    authority: { value: input.authority ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -117,10 +131,13 @@ export function getSetInstruction<
 
   const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
   return Object.freeze({
-    accounts: [getAccountMeta(accounts.counter)],
+    accounts: [
+      getAccountMeta(accounts.counter),
+      getAccountMeta(accounts.authority),
+    ],
     data: getSetInstructionDataEncoder().encode(args as SetInstructionDataArgs),
     programAddress,
-  } as SetInstruction<TProgramAddress, TAccountCounter>);
+  } as SetInstruction<TProgramAddress, TAccountCounter, TAccountAuthority>);
 }
 
 export type ParsedSetInstruction<
@@ -130,6 +147,7 @@ export type ParsedSetInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     counter: TAccountMetas[0];
+    authority: TAccountMetas[1];
   };
   data: SetInstructionData;
 };
@@ -142,7 +160,7 @@ export function parseSetInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedSetInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 1) {
+  if (instruction.accounts.length < 2) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -154,7 +172,7 @@ export function parseSetInstruction<
   };
   return {
     programAddress: instruction.programAddress,
-    accounts: { counter: getNextAccount() },
+    accounts: { counter: getNextAccount(), authority: getNextAccount() },
     data: getSetInstructionDataDecoder().decode(instruction.data),
   };
 }

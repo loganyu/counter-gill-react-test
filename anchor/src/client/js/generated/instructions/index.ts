@@ -9,5 +9,7 @@
 export * from './close';
 export * from './decrement';
 export * from './increment';
+export * from './incrementWithPda';
 export * from './initialize';
+export * from './initializeWithPda';
 export * from './set';

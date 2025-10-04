@@ -7,3 +7,4 @@
  */
 
 export * from './counter';
+export * from './counterWithAuthority';

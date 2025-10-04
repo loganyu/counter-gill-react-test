@@ -6,6 +6,9 @@ import { CounterUiList } from './ui/counter-ui-list'
 import { CounterUiProgramExplorerLink } from './ui/counter-ui-program-explorer-link'
 import { CounterUiProgramGuard } from './ui/counter-ui-program-guard'
 
+import { CounterExample } from './ui/counter-example'
+import { VaultExample } from './ui/vault-example'
+
 export default function CounterFeature() {
   const { account } = useSolana()
 
@@ -19,6 +22,12 @@ export default function CounterFeature() {
             : 'Select a wallet to run the program.'
         }
       >
+        <div className="mb-6">
+          {account ? <VaultExample account={account} /> : null}
+        </div>
+        <div className="mb-6">
+          {account ? <CounterExample account={account} /> : null}
+        </div>
         <p className="mb-6">
           <CounterUiProgramExplorerLink />
         </p>

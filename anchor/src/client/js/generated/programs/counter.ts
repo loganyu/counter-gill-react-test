@@ -17,7 +17,9 @@ import {
   type ParsedCloseInstruction,
   type ParsedDecrementInstruction,
   type ParsedIncrementInstruction,
+  type ParsedIncrementWithPdaInstruction,
   type ParsedInitializeInstruction,
+  type ParsedInitializeWithPdaInstruction,
   type ParsedSetInstruction,
 } from '../instructions';
 
@@ -26,6 +28,7 @@ export const COUNTER_PROGRAM_ADDRESS =
 
 export enum CounterAccount {
   Counter,
+  CounterWithAuthority,
 }
 
 export function identifyCounterAccount(
@@ -43,6 +46,17 @@ export function identifyCounterAccount(
   ) {
     return CounterAccount.Counter;
   }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([225, 93, 129, 138, 117, 8, 42, 250])
+      ),
+      0
+    )
+  ) {
+    return CounterAccount.CounterWithAuthority;
+  }
   throw new Error(
     'The provided account could not be identified as a counter account.'
   );
@@ -52,7 +66,9 @@ export enum CounterInstruction {
   Close,
   Decrement,
   Increment,
+  IncrementWithPda,
   Initialize,
+  InitializeWithPda,
   Set,
 }
 
@@ -97,12 +113,34 @@ export function identifyCounterInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([230, 75, 141, 91, 58, 100, 149, 137])
+      ),
+      0
+    )
+  ) {
+    return CounterInstruction.IncrementWithPda;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237])
       ),
       0
     )
   ) {
     return CounterInstruction.Initialize;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([223, 205, 128, 100, 111, 48, 108, 113])
+      ),
+      0
+    )
+  ) {
+    return CounterInstruction.InitializeWithPda;
   }
   if (
     containsBytes(
@@ -133,8 +171,14 @@ export type ParsedCounterInstruction<
       instructionType: CounterInstruction.Increment;
     } & ParsedIncrementInstruction<TProgram>)
   | ({
+      instructionType: CounterInstruction.IncrementWithPda;
+    } & ParsedIncrementWithPdaInstruction<TProgram>)
+  | ({
       instructionType: CounterInstruction.Initialize;
     } & ParsedInitializeInstruction<TProgram>)
+  | ({
+      instructionType: CounterInstruction.InitializeWithPda;
+    } & ParsedInitializeWithPdaInstruction<TProgram>)
   | ({
       instructionType: CounterInstruction.Set;
     } & ParsedSetInstruction<TProgram>);

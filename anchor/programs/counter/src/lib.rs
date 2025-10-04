@@ -17,7 +17,7 @@ pub mod counter {
         Ok(())
     }
 
-    pub fn increment(ctx: Context<Update>) -> Result<()> {
+    pub fn increment(ctx: Context<UpdateWithAuthority>) -> Result<()> {
         ctx.accounts.counter.count = ctx.accounts.counter.count.checked_add(1).unwrap();
         Ok(())
     }
@@ -26,8 +26,19 @@ pub mod counter {
         Ok(())
     }
 
-    pub fn set(ctx: Context<Update>, value: u8) -> Result<()> {
+    pub fn increment_with_pda(ctx: Context<UpdateWithPda>) -> Result<()> {
+        ctx.accounts.counter.count = ctx.accounts.counter.count.checked_add(1).unwrap();
+        Ok(())
+    }
+
+    pub fn set(ctx: Context<UpdateWithAuthority>, value: u8) -> Result<()> {
         ctx.accounts.counter.count = value.clone();
+        Ok(())
+    }
+
+    pub fn initialize_with_pda(ctx: Context<InitializeCounterWithPda>) -> Result<()> {
+        ctx.accounts.counter.authority = ctx.accounts.authority.key();
+        ctx.accounts.counter.count = 0;
         Ok(())
     }
 }
@@ -38,13 +49,29 @@ pub struct InitializeCounter<'info> {
     pub payer: Signer<'info>,
 
     #[account(
-  init,
-  space = 8 + Counter::INIT_SPACE,
-  payer = payer
+        init,
+        space = 8 + Counter::INIT_SPACE,
+        payer = payer
     )]
     pub counter: Account<'info, Counter>,
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+pub struct InitializeCounterWithPda<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init,
+        space = 8 + CounterWithAuthority::INIT_SPACE,
+        payer = payer
+    )]
+    pub counter: Account<'info, CounterWithAuthority>,
+    /// CHECK: PDA authority
+    pub authority: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[derive(Accounts)]
 pub struct CloseCounter<'info> {
     #[account(mut)]
@@ -63,8 +90,34 @@ pub struct Update<'info> {
     pub counter: Account<'info, Counter>,
 }
 
+#[derive(Accounts)]
+pub struct UpdateWithAuthority<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, Counter>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateWithPda<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, CounterWithAuthority>,
+    /// CHECK: PDA authority derived from seeds
+    #[account(
+        seeds = [b"authority"],
+        bump,
+    )]
+    pub authority: AccountInfo<'info>,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Counter {
+    count: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct CounterWithAuthority {
+    authority: Pubkey,
     count: u8,
 }
