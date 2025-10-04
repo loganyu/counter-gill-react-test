@@ -27,16 +27,10 @@ dist-ssr
 *.tsbuildinfo
 /tmp
 
-# Anchor
+# Anchor build artifacts
+/anchor/target/
 /anchor/.anchor
-/anchor/target/debug
-/anchor/target/deploy
-/anchor/target/release
-/anchor/target/sbf-solana-solana
-/anchor/target/test-ledger
-/anchor/target/.rustc_info.json
 test-ledger
-**/*.rs.bk
 
-/anchor/src/client/js/*.ts
-anchor/src/vault/client/js/*.ts
+# Generated client code
+/anchor/src/vault/client/js/generated/
